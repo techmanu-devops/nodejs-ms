@@ -43,7 +43,7 @@ jobs:
             -Dsonar.host.url=https://sonarcloud.io
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-      # 6. Azure Login
+      # 6. Azure Login (SP Secret auth, v1 syntax only)
       - name: Azure Login using SP
         uses: azure/login@v1
         with:
