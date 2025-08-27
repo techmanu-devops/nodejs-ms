@@ -44,7 +44,7 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
       # 6. Azure Login
-      - name: Azure Login
+      - name: Azure Login using SP
         uses: azure/login@v1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
