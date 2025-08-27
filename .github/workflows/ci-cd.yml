@@ -1,0 +1,73 @@
+name: CI-CD for Node.js Microservice
+
+on:
+  push:
+    branches:
+      - dev   # deploys to Dev App Service
+      - main  # deploys to Prod App Service
+  workflow_dispatch:
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. Run lint + tests
+      - name: Run lint
+        run: npm run lint --if-present
+      - name: Run tests
+        run: npm test
+
+      # 5. SonarCloud Scan (static code analysis)
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        with:
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ secrets.SONAR_ORG }}
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      # 6. Azure Login
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+
+      # 7. Docker login to ACR
+      - name: Docker login to ACR
+        run: echo ${{ secrets.REGISTRY_PASSWORD }} | docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+
+      # 8. Build & Push Docker image
+      - name: Build & Push Docker image
+        run: |
+          IMAGE_NAME=${{ secrets.REGISTRY_LOGIN_SERVER }}/nodejs-microservice
+          docker build -t $IMAGE_NAME:${{ github.sha }} .
+          docker push $IMAGE_NAME:${{ github.sha }}
+          docker tag $IMAGE_NAME:${{ github.sha }} $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:latest
+
+      # 9. Deploy to Azure Web App (Dev/Prod based on branch)
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ github.ref == 'refs/heads/main' && 'my-nodejs-app-prod' || 'my-nodejs-app-dev' }}
+          images: "${{ secrets.REGISTRY_LOGIN_SERVER }}/nodejs-microservice:latest"
